@@ -2,6 +2,8 @@
 #include <types.h>
 #include <boolean.h>
 #include <string.h>
+#include <filesystem/vfilesystem.h>
+#include <filesystem/devtmpsys.h>
 #include <drivers/cpuid.h>
 #include <drivers/pci.h>
 #include <drivers/VGA.h>
@@ -45,21 +47,50 @@ void print_memory(void *addresspointer, uint32_t size, uint32_t row_size);
 uint16_t x_resolution = 0;
 uint16_t y_resolution = 0;
 uint32_t *vbe_physical_base_pointer = NULL;
+extern file_ops_t VGAFileOperation;
+
+// File Descriptor
+file_t* stdout = NULL;
+
+// Device FILE
+extern filesystem_t DeviceFileManager;
 
 /* Fungsi utama loader (dijalankan di protected mode 32-bit) */
 void kernelMain(uint32_t* _vbe_physical_base_pointer, uint16_t _x_resolution, uint16_t _y_resolution) {
    // Get Screen Resolution, and FrameBuffer Address From Init
+   int status = 0;
    x_resolution = _x_resolution;
    y_resolution = _y_resolution;
    vbe_physical_base_pointer = _vbe_physical_base_pointer;
-
    initVGA();
-   printf(CYAN "[ >> ] Initializing Kernel Environment...\n" RESET);
-   printf(MAGENTA "[ !! ] Welcome to MyKernel\n" RESET);
+
+   printf(CYAN "[ >> ] Initializing Kernel Environment ...\n" RESET);
+
+   // Init Virtual File System
+   printf(CYAN "[ >> ] Initializing Virtual File System ...\n" RESET);
+   printf(GREEN BOLD "[ OK ]" RESET " Virtual Filesystem Initialized Successfully\n"); initVFileSystem();
+
+   // Init Device File Manager
+   printf(CYAN "[ >> ] Initializing Device File Manager ...\n" RESET);
+   initDevTmpSys();
+   {     // Mounting Device File Manager
+      status = vfs_mount("/dev/", &DeviceFileManager);
+      if (status == 0) printf(GREEN BOLD "[ OK ]" RESET " Device File Manager Mounted to \"/dev/\" Successfully\n");
+      else printf(BG_RED WHITE BOLD "[ ER ]" RESET RED " Device File Manager Mounted to \"/dev/\" Failed\n" RESET);
+   }
+   {     // Mounting VGA to Device manager /dev/VGA1
+      status = register_device("VGA1", &VGAFileOperation);
+      if (status == 0) printf(GREEN BOLD "[ OK ]" RESET " VGA Mounted to \"VGA1\" Successfully\n");
+      else printf(BG_RED WHITE BOLD "[ ER ]" RESET RED " VGA Mounted to \"VGA1\" Failed\n" RESET);
+   }     // Mounting Device File Manager
+
+   stdout = vfs_open("/dev/VGA1", 0);
+   if (stdout == NULL)
+      PRINTF_DEBUG("STDOUT NULL");
+   vfs_write(stdout, "Virtual File System Testing \n", 29);
 
    // Deteksi fitur CPU saat startup
    detect_cpu_features();  // Detect SSE2 IF Available then Enable it
-
    printf(YELLOW "[ .. ] CPU Support SSE2 Instructions ? : " RESET "%s\n", g_has_sse2 ? GREEN BOLD "Yes" RESET : RED "No" RESET);
    printf(YELLOW "[ .. ] CPU Support AVX2 Instructions ? : " RESET "%s\n", g_has_avx2 ? GREEN BOLD "Yes" RESET : RED "No" RESET);
 
@@ -69,10 +100,8 @@ void kernelMain(uint32_t* _vbe_physical_base_pointer, uint16_t _x_resolution, ui
 
    // Setup Interrupt 8259PIC
    int pic_status = init8259PIC(0x08);  // 0x08 is Global Descriptor Table Code Segment
-   if (pic_status == 0)
-      printf(GREEN BOLD "[ OK ]" RESET " PIC Initialized Successfully\n");
-   else
-      printf(BG_RED WHITE BOLD "[ERR]" RESET RED " PIC Initialization Failed\n" RESET);
+   if (pic_status == 0) printf(GREEN BOLD "[ OK ]" RESET " PIC Initialized Successfully\n");
+   else printf(BG_RED WHITE BOLD "[ ER ]" RESET RED " PIC Initialization Failed\n" RESET);
 
    // PIT Initialization
    printf(GREEN BOLD "[ OK ]" RESET " PIT Timer Initialized\n");

@@ -2,6 +2,7 @@
 #include <drivers/VGAEscSequence.h>
 #include <drivers/VGAColorSeq.h>
 #include <drivers/TimerPIT.h>
+#include <filesystem/vfilesystem.h>
 #include <stdio.h>
 #include <ioport.h>
 #include <utils.h>
@@ -13,6 +14,12 @@ extern bool g_has_sse2;
 extern uint32_t* vbe_physical_base_pointer;
 extern uint16_t x_resolution;          // Width
 extern uint16_t y_resolution;          // Height
+
+// Function Declaration
+int32_t VGA_file_operation_read(file_t, char* buf, uint32_t size);
+int32_t VGA_file_operation_write(file_t, const char* buf, uint32_t size);
+int32_t VGA_file_operation_readdir(file_t, char* name_buf);
+int32_t VGA_file_operation_close(file_t);
 
 VGA KernelVGA = {
    .window_width = 0,
@@ -31,6 +38,13 @@ VGA font_layer_attribute = {0};
 int32_t esc_index = 0;
 State state = STATE_NORMAL;
 
+// VGA File Operation For DevTmpSys
+file_ops_t VGAFileOperation = {
+   .read    = NULL,
+   .write   = NULL,
+   .readdir = NULL,
+   .close   = NULL,
+};
 
 // Declaration
 void set_cursor(void *);
@@ -53,7 +67,6 @@ void initVGA() {
    esc_index = 0;
    state = STATE_NORMAL;
 
-
    move_cursor(0, 0);
 
    clear_screen();
@@ -61,6 +74,32 @@ void initVGA() {
    printf(CYAN  "[ >> ] Initializing VGA Mode\n" RESET);
    printf("        Framebuffer : " YELLOW "0x%.8x\n" RESET, KernelVGA.frameBufPointer);
    printf("        Resolution  : " YELLOW "%dx%d\n\n" RESET, x_resolution, y_resolution);
+
+   VGAFileOperation = (file_ops_t){
+      .read    = VGA_file_operation_read,
+      .write   = VGA_file_operation_write,
+      .readdir = VGA_file_operation_readdir,
+      .close   = VGA_file_operation_close,
+   };
+}
+
+int32_t VGA_file_operation_read(file_t, char* buf, uint32_t size) {
+   return 0;
+}
+
+int32_t VGA_file_operation_write(file_t, const char* buf, uint32_t size) {
+   for (uint32_t i = 0 ; i < size ; i++) {
+      write_font(buf[i]);
+   }
+   return 0;
+}
+
+int32_t VGA_file_operation_readdir(file_t, char* name_buf) {
+   return 0;
+}
+
+int32_t VGA_file_operation_close(file_t) {
+   return 0;
 }
 
 static inline void draw_normal_glyph_row(VGA VGAAttr, uint32_t *pixel, uint32_t bits) {
